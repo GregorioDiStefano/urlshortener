@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
-	"unsafe"
 
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
@@ -20,12 +19,13 @@ type Database interface {
 	SignupUser(username, password, email string) error
 
 	InsertURL(userID int, url string) (int64, string, error)
-	GetURL(id uint64) (string, error)
+	GetURL(id uint64) (string, string, error)
 	GetURLs(userID int) ([]URL, error)
 
 	ValidateUser(username string) error
 
 	Ping() error
+	GetConnection() *sql.DB
 }
 
 type User struct {
@@ -47,11 +47,22 @@ type URL struct {
 	AccessCount  int        `json:"access_count" binding:"required"`
 }
 
-func NewDB() (Database, error) {
+type dbConfig struct {
+	host     string
+	port     string
+	user     string
+	password string
+	dbname   string
+}
+
+func NewDB(config *dbConfig) (Database, error) {
 	// NOTE: https://go.dev/doc/database/sql-injection
 	// Prepared statements are used, so don't worry about SQL injection
-	db, err := sql.Open("postgres", "user=postgres password=mysecretpassword sslmode=disable")
+	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s "+
+		"password=%s dbname=%s sslmode=disable",
+		config.host, config.port, config.user, config.password, config.dbname)
 
+	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +88,6 @@ func NewDB() (Database, error) {
 		access_count INT,
 		FOREIGN KEY (user_id) REFERENCES users(id)
 	);
-	
-	ALTER SEQUENCE users_id_seq RESTART WITH 1000;
-	ALTER SEQUENCE short_urls_id_seq RESTART WITH 1000;
-	
 	`)
 
 	if err != nil {
@@ -96,7 +103,8 @@ func NewDB() (Database, error) {
 
 func (d *DB) GetURLs(userID int) ([]URL, error) {
 	var urls []URL
-	rows, err := d.db.Query("SELECT id, target, nonce, created, user_id, last_accessed, access_count FROM short_urls WHERE user_id = $1", userID)
+	rows, err := d.db.Query(
+		"SELECT id, target, nonce, created, user_id, last_accessed, access_count FROM short_urls WHERE user_id = $1", userID)
 
 	if err != nil {
 		return nil, err
@@ -106,14 +114,15 @@ func (d *DB) GetURLs(userID int) ([]URL, error) {
 
 	for rows.Next() {
 		var url URL
-		err := rows.Scan(&url.id, &url.Target, &url.Nonce, &url.Created, &url.UserID, &url.LastAccessed, &url.AccessCount)
+		err := rows.Scan(
+			&url.id, &url.Target, &url.Nonce, &url.Created, &url.UserID, &url.LastAccessed, &url.AccessCount)
 
 		fmt.Println(url)
 		if err != nil {
 			return nil, err
 		}
 
-		url.Key = idToKey(int64(url.id))
+		url.Key = uint64ToBase64(int64(url.id))
 		urls = append(urls, url)
 
 	}
@@ -177,7 +186,6 @@ func (d *DB) InsertURL(userID int, url string) (int64, string, error) {
 	nonce := randomString(2)
 
 	now := time.Now().Format("2006-01-02")
-	fmt.Println(now)
 	var id int64
 
 	err := d.db.QueryRow("INSERT INTO short_urls (target, created, user_id, last_accessed, access_count, nonce) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
@@ -186,12 +194,15 @@ func (d *DB) InsertURL(userID int, url string) (int64, string, error) {
 	return id, nonce, err
 }
 
-func (d *DB) GetURL(id uint64) (string, error) {
+func (d *DB) GetURL(id uint64) (string, string, error) {
 	// increment value and return value from column
 	var target string
+	var nonce string
+
 	err := d.db.QueryRow(
-		"UPDATE short_urls SET access_count = access_count + 1, last_accessed = NOW() WHERE id = $1 RETURNING target", id).Scan(&target)
-	return target, err
+		"UPDATE short_urls SET access_count = access_count + 1, last_accessed = NOW() WHERE id = $1 RETURNING target, nonce", id).Scan(
+		&target, &nonce)
+	return target, nonce, err
 }
 
 func (d *DB) ValidateUser(username string) error {
@@ -213,12 +224,12 @@ func (d *DB) Ping() error {
 	return d.db.Ping()
 }
 
+func (d *DB) GetConnection() *sql.DB {
+	return d.db
+}
+
 func randomString(size int) string {
-	var alphabet = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-	b := make([]byte, size)
+	b := make([]byte, size+2)
 	rand.Read(b)
-	for i := 0; i < size; i++ {
-		b[i] = alphabet[b[i]%byte(len(alphabet))]
-	}
-	return *(*string)(unsafe.Pointer(&b))
+	return fmt.Sprintf("%x", b)[2 : size+2]
 }

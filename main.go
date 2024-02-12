@@ -96,10 +96,10 @@ func (app *App) register(c *gin.Context) {
 
 		// TODO: more validation needed here
 		if len(login.Username) < minUsernameLength {
-			return fmt.Errorf("username must be at least %d characters long and at most:", minUsernameLength, maxUsernameLength)
+			return fmt.Errorf("username must be at least %d characters long and at most: %d", minUsernameLength, maxUsernameLength)
 		}
 		if len(login.Password) < minPasswordLength {
-			return fmt.Errorf("password must be at least %d characters long and at most", minPasswordLength, maxPasswordLength)
+			return fmt.Errorf("password must be at least %d characters long and at most: %d", minPasswordLength, maxPasswordLength)
 		}
 		if !strings.ContainsAny(login.Password, specialChars) {
 			return fmt.Errorf("password must contain at least one special character")
@@ -122,6 +122,7 @@ func (app *App) register(c *gin.Context) {
 
 	if err := app.db.SignupUser(json.Username, json.Password, json.Email); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.Status(http.StatusCreated)
@@ -141,13 +142,16 @@ func (app *App) shortenURL(c *gin.Context) {
 	}
 
 	userId := c.GetInt("user_id")
-	_, _, err := app.db.InsertURL(userId, json.URL)
+	userID, nonce, err := app.db.InsertURL(userId, json.URL)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	key := uint64ToBase64(userID)
+	shortURL := fmt.Sprintf("%s%s", key, nonce)
+	c.JSON(http.StatusCreated, gin.H{"key": shortURL})
 }
 
 func (app *App) shortenURLDelete(c *gin.Context) {
@@ -155,20 +159,59 @@ func (app *App) shortenURLDelete(c *gin.Context) {
 
 func (app *App) redirect(c *gin.Context) {
 	key := strings.TrimLeft(c.Request.URL.Path, "/")
-	dbID, err := keyToID(key)
+
+	if len(key) < 4 {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	// split short url into two parts: actual id component, and nonce
+	id := key[0 : len(key)-2]
+	nonce := key[len(key)-2:]
+
+	dbID, err := base64StringToUint64(id)
 
 	if err != nil {
 		c.Status(http.StatusNotFound)
 		return
 	}
 
-	url, err := app.db.GetURL(dbID)
+	url, nonceExpected, err := app.db.GetURL(dbID)
 	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	if nonce != nonceExpected {
 		c.Status(http.StatusNotFound)
 		return
 	}
 
 	c.Redirect(http.StatusMovedPermanently, url)
+}
+
+func (app *App) ping(c *gin.Context) {
+	errCache := make(chan error)
+	errDB := make(chan error)
+
+	go func() {
+		errCache <- app.cache.Ping()
+		errDB <- app.db.Ping()
+	}()
+
+	errCacheResp := <-errCache
+	errDBResp := <-errDB
+
+	if errCacheResp == nil && errDBResp == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "pong",
+		})
+		return
+	} else {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "error",
+		})
+	}
 }
 
 func (app *App) urls(c *gin.Context) {
@@ -180,16 +223,16 @@ func (app *App) urls(c *gin.Context) {
 		return
 	}
 
-	fmt.Println(urls)
-
 	c.JSON(http.StatusOK, urls)
 }
 
 func setupRouter(app *App) *gin.Engine {
 	router := gin.Default()
 
+	/* Main router used to redirect from shortURL */
 	router.GET("/:id", app.redirect)
 
+	/* Routes used to authenticate */
 	auth := router.Group("/auth")
 	auth.POST("/login", app.login)
 	auth.POST("/register", app.register)
@@ -202,36 +245,22 @@ func setupRouter(app *App) *gin.Engine {
 	api.DELETE("/shorten/:id", app.shortenURLDelete)
 	api.GET("/urls/", app.urls)
 
-	// health check for k8s
-	router.GET("/ping", func(c *gin.Context) {
-		errCache := make(chan error)
-		errDB := make(chan error)
-
-		go func() {
-			errCache <- app.cache.Ping()
-			errDB <- app.db.Ping()
-		}()
-
-		errCacheResp := <-errCache
-		errDBResp := <-errDB
-
-		if errCacheResp == nil && errDBResp == nil {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "pong",
-			})
-			return
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"message": "error",
-			})
-		}
-	})
-
+	/* Health check for k8s; respond with http 200 if redis and postgresql are up */
+	router.GET("/ping", app.ping)
 	return router
 }
 
 func main() {
-	db, err := NewDB()
+	// Very primative way to handle config, but time constraints..
+	// I would usually use https://github.com/spf13/viper for this
+	dbConfig := &dbConfig{}
+	dbConfig.host = getRequiredEnvVar("DB_HOST")
+	dbConfig.port = getRequiredEnvVar("DB_PORT")
+	dbConfig.user = getRequiredEnvVar("DB_USER")
+	dbConfig.password = getRequiredEnvVar("DB_PASSWORD")
+	dbConfig.dbname = getRequiredEnvVar("DB_NAME")
+
+	db, err := NewDB(dbConfig)
 
 	if err != nil {
 		log.Fatal(err)

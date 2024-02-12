@@ -8,9 +8,12 @@ import (
 	jwt "github.com/golang-jwt/jwt/v5"
 )
 
+// jwtAuthMiddleware is a middleware that checks for a valid JWT token
+// in the Authorization header and sets the username and user_id in the
+// context if the token is valid
 func jwtAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.Request.Header.Get("Authorization")
+		authHeader := c.Request.Header.Get("authorization")
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer") {
 			c.JSON(401, gin.H{"error": "authorization header is required"})
 			c.Abort()

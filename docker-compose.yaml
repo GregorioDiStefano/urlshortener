@@ -6,5 +6,16 @@ services:
      - "6379:6379"
   db:
     image: postgres
+    environment:
+      POSTGRES_PASSWORD: mysecretpassword
     ports:
      - "5432:5432"
+  testdb:
+    image: postgres
+    environment:
+      POSTGRES_PASSWORD: testpassword 
+      POSTGRES_USER: testuser
+      POSTGRES_DB: testdb
+    ports:
+     - "9999:5432"
+  
