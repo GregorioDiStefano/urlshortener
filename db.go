@@ -223,8 +223,7 @@ func (d *DB) GetURL(id uint64) (string, string, error) {
 	var nonce string
 
 	err := d.db.QueryRow(
-		"UPDATE short_urls SET access_count = access_count + 1, last_accessed = NOW() WHERE id = $1 AND disabled = false RETURNING target, nonce", id).Scan(
-		&target, &nonce)
+		"SELECT target, nonce FROM short_urls WHERE id = $1 AND disabled = false", id).Scan(&target, &nonce)
 	return target, nonce, err
 }
 

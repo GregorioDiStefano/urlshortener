@@ -17,12 +17,6 @@ func (app *App) redirect(c *gin.Context) {
 		return
 	}
 
-	if target, err := app.cache.GetURL(key); err == nil && target != "" {
-		log.WithField("key", key).WithField("target", target).Info("cache hit")
-		c.Redirect(http.StatusMovedPermanently, target)
-		return
-	}
-
 	// split short url into two parts: actual id component based on row id, and nonce
 	var dbID uint64
 	var nonce string
@@ -30,6 +24,19 @@ func (app *App) redirect(c *gin.Context) {
 	if dbID, nonce, err = shortURLKeyToIDAndNonce(key); err != nil {
 		log.WithError(err).WithField("key", key).Error("error converting key")
 		c.Status(http.StatusNotFound)
+		return
+	}
+
+	// update last accessed and access count in background
+	go func(dbID uint64) {
+		if err := app.db.UpdateAccessAndLastAccessed(dbID); err != nil {
+			log.WithError(err).WithField("id", dbID).Error("error updating access count")
+		}
+	}(dbID)
+
+	if target, err := app.cache.GetURL(key); err == nil && target != "" {
+		log.WithField("key", key).WithField("target", target).Info("cache hit")
+		c.Redirect(http.StatusMovedPermanently, target)
 		return
 	}
 
@@ -50,13 +57,6 @@ func (app *App) redirect(c *gin.Context) {
 		log.WithError(err).WithField("key", key).WithField("url", url).Error("error caching url")
 		// carry on
 	}
-
-	// update last accessed and access count in background
-	go func(dbID uint64) {
-		if err := app.db.UpdateAccessAndLastAccessed(dbID); err != nil {
-			log.WithError(err).WithField("id", dbID).Error("error updating access count")
-		}
-	}(dbID)
 
 	c.Redirect(http.StatusMovedPermanently, url)
 }

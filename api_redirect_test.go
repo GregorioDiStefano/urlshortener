@@ -63,11 +63,11 @@ func TestRedisKeySet(t *testing.T) {
 
 	app.cache = cacheMock
 
-	cacheMock.On("GetURL", "testkey").Return("https://google.ca", nil)
+	cacheMock.On("GetURL", "Aw8c").Return("https://google.ca", nil)
 
 	// call /testkey and check that the cache is called
 	router := setupRouter(app)
-	req, _ := http.NewRequest("GET", "/testkey", nil)
+	req, _ := http.NewRequest("GET", "/Aw8c", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
