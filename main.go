@@ -73,6 +73,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	defer db.Close()
 	cache, err := NewCache()
 
 	if err != nil {

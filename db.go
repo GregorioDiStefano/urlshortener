@@ -28,6 +28,7 @@ type Database interface {
 
 	Ping() error
 	GetConnection() *sql.DB
+	Close() error
 }
 
 type User struct {
