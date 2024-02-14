@@ -15,29 +15,29 @@ type DB struct {
 }
 
 type Database interface {
-	GetUser(username string) (*User, error)
-	SignupUser(username, password, email string) error
+	GetUser(email string) (*User, error)
+	SignupUser(email, password string) error
 
 	InsertURL(userID int, url string) (int64, string, error)
 	GetURL(id uint64) (string, string, error)
-	GetURLs(userID int) ([]URL, error)
+	GetURLs(userID int) ([]UserURLs, error)
+	DisableURL(userID int, dbID uint64) error
+	UpdateAccessAndLastAccessed(id uint64) error
 
-	ValidateUser(username string) error
+	ValidateUser(email string) error
 
 	Ping() error
 	GetConnection() *sql.DB
 }
 
 type User struct {
-	id       int
-	username string
-	email    string
+	id    int
+	email string
 
 	password_hash []byte
 }
 
 type URL struct {
-	id           int
 	Key          string     `json:"key" binding:"required"`
 	Target       string     `json:"target" binding:"required"`
 	Nonce        string     `json:"nonce" binding:"required"`
@@ -45,6 +45,15 @@ type URL struct {
 	UserID       int        `json:"user_id" binding:"required"`
 	LastAccessed *time.Time `json:"last_accessed" binding:"required"`
 	AccessCount  int        `json:"access_count" binding:"required"`
+}
+
+// UserURLs are
+type UserURLs struct {
+	ShortURL     string  `json:"short_url"`
+	Target       string  `json:"target"`
+	Created      string  `json:"created"`
+	LastAccessed *string `json:"last_accessed"`
+	AccessCount  int     `json:"access_count"`
 }
 
 type dbConfig struct {
@@ -71,7 +80,6 @@ func NewDB(config *dbConfig) (Database, error) {
 	// for the sake of the exercise, i'll leave it here
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
 		id SERIAL PRIMARY KEY,
-		username VARCHAR(255) NOT NULL UNIQUE,
 		email VARCHAR(255) NOT NULL UNIQUE,
 		password_hash BYTEA NOT NULL,
 		created DATE NOT NULL,
@@ -86,8 +94,17 @@ func NewDB(config *dbConfig) (Database, error) {
 		user_id INT,
 		last_accessed DATE,
 		access_count INT,
+		disabled BOOLEAN DEFAULT FALSE,
 		FOREIGN KEY (user_id) REFERENCES users(id)
 	);
+
+	CREATE TABLE IF NOT EXISTS schema_migrations (
+		migration_id VARCHAR(255) PRIMARY KEY,
+		migration_name VARCHAR(255) NOT NULL,
+		applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	SELECT setval('users_id_seq', 999);
 	`)
 
 	if err != nil {
@@ -101,11 +118,12 @@ func NewDB(config *dbConfig) (Database, error) {
 	return &DB{db}, nil
 }
 
-func (d *DB) GetURLs(userID int) ([]URL, error) {
-	var urls []URL
+func (d *DB) GetURLs(userID int) ([]UserURLs, error) {
+	var urls []UserURLs
 	rows, err := d.db.Query(
-		"SELECT id, target, nonce, created, user_id, last_accessed, access_count FROM short_urls WHERE user_id = $1", userID)
+		"SELECT id, nonce, target, created, last_accessed, access_count FROM short_urls WHERE user_id = $1 AND disabled = false", userID)
 
+	fmt.Println(rows, err)
 	if err != nil {
 		return nil, err
 	}
@@ -113,29 +131,30 @@ func (d *DB) GetURLs(userID int) ([]URL, error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var url URL
-		err := rows.Scan(
-			&url.id, &url.Target, &url.Nonce, &url.Created, &url.UserID, &url.LastAccessed, &url.AccessCount)
+		var url UserURLs
 
-		fmt.Println(url)
+		var id int64
+		var nonce string
+
+		err := rows.Scan(&id, &nonce, &url.Target, &url.Created, &url.LastAccessed, &url.AccessCount)
 		if err != nil {
 			return nil, err
 		}
 
-		url.Key = uint64ToBase64(int64(url.id))
+		// construct the short url
+		url.ShortURL = fmt.Sprintf("%s%s", uint64ToBase64(int64(id)), nonce)
 		urls = append(urls, url)
-
 	}
 
 	return urls, nil
 }
 
-// GetUser returns a user by username
-func (d *DB) GetUser(username string) (*User, error) {
+// GetUser returns a user by email
+func (d *DB) GetUser(email string) (*User, error) {
 	var user User
 
-	err := d.db.QueryRow("SELECT id, username, password_hash, email FROM users WHERE username = $1", username).Scan(
-		&user.id, &user.username, &user.password_hash, &user.email)
+	err := d.db.QueryRow("SELECT id, password_hash, email FROM users WHERE email = $1", email).Scan(
+		&user.id, &user.password_hash, &user.email)
 
 	if err != nil {
 		return nil, err
@@ -144,9 +163,9 @@ func (d *DB) GetUser(username string) (*User, error) {
 	return &user, nil
 }
 
-func (d *DB) SignupUser(username, password, email string) error {
+func (d *DB) SignupUser(email, password string) error {
 	var existingUsername string
-	err := d.db.QueryRow("SELECT username FROM users WHERE username = $1", username).Scan(&existingUsername)
+	err := d.db.QueryRow("SELECT email FROM users WHERE email = $1", email).Scan(&existingUsername)
 
 	if err == sql.ErrNoRows {
 		// Username does not exist, so it's safe to proceed with creating a new user
@@ -158,10 +177,9 @@ func (d *DB) SignupUser(username, password, email string) error {
 
 		timeNow := time.Now().Format("2006-01-02")
 		result, err := d.db.Exec(
-			"INSERT INTO users (username, password_hash, email, created, validate) VALUES ($1, $2, $3, $4, $5)",
-			username,
-			bcryptPassword,
+			"INSERT INTO users (email, password_hash, created, validate) VALUES ($1, $2, $3, $4)",
 			email,
+			bcryptPassword,
 			timeNow,
 			true, // setting to true, would be false if we did the validation procedure
 		)
@@ -176,9 +194,9 @@ func (d *DB) SignupUser(username, password, email string) error {
 
 		return err
 	} else if err != nil {
-		return fmt.Errorf("error checking username existence: %w", err)
+		return fmt.Errorf("error checking email existence: %w", err)
 	} else {
-		return fmt.Errorf("username already exists")
+		return fmt.Errorf("email already exists")
 	}
 }
 
@@ -194,20 +212,40 @@ func (d *DB) InsertURL(userID int, url string) (int64, string, error) {
 	return id, nonce, err
 }
 
+func (d *DB) UpdateAccessAndLastAccessed(id uint64) error {
+	_, err := d.db.Exec("UPDATE short_urls SET access_count = access_count + 1, last_accessed = NOW() WHERE id = $1", id)
+	return err
+}
+
 func (d *DB) GetURL(id uint64) (string, string, error) {
 	// increment value and return value from column
 	var target string
 	var nonce string
 
 	err := d.db.QueryRow(
-		"UPDATE short_urls SET access_count = access_count + 1, last_accessed = NOW() WHERE id = $1 RETURNING target, nonce", id).Scan(
+		"UPDATE short_urls SET access_count = access_count + 1, last_accessed = NOW() WHERE id = $1 AND disabled = false RETURNING target, nonce", id).Scan(
 		&target, &nonce)
 	return target, nonce, err
 }
 
-func (d *DB) ValidateUser(username string) error {
+func (d *DB) DisableURL(userID int, dbID uint64) error {
 	// update user to be validated
-	result, err := d.db.Exec("UPDATE users SET validate = true WHERE username = $1", username)
+	result, err := d.db.Exec("UPDATE short_urls SET disabled = true WHERE user_id = $1 AND id = $2", userID, dbID)
+
+	if err != nil {
+		return fmt.Errorf("error disabling url: %w", err)
+	}
+
+	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+		return fmt.Errorf("error disabling url: %w", err)
+	} else {
+		return err
+	}
+}
+
+func (d *DB) ValidateUser(email string) error {
+	// update user to be validated
+	result, err := d.db.Exec("UPDATE users SET validate = true WHERE email = $1", email)
 
 	if err != nil {
 		return fmt.Errorf("error validating user: %w", err)

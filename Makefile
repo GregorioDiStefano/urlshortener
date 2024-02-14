@@ -14,7 +14,7 @@ test:
 	GORACE="halt_on_error=1" go test -race -count 1 -v ./...
 
 coverage:
-	go test -v -coverprofile cover.out ./...
+	go test $(go list ./... | grep -v mocks ) -v -coverprofile cover.out
 	go tool cover -html cover.out -o cover.html
 
 mock:

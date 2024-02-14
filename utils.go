@@ -4,23 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
-	"os"
 
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
-
-func getRequiredEnvVar(key string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		logrus.Fatalf("Environment variable %s is required", key)
-	}
-
-	return value
-}
 
 // int64ToByteArray converts an int64 to a byte array and removed leading 0x00s
 // For example, a number such as 1020, when converted to a byte array, will be [3 252] instead of [0 0 0 0 0 0 3 252]
-func int64ToByteArray(number int64) []byte {
+func uint64ToByteArray(number int64) []byte {
 	byteArray := make([]byte, 8)
 	binary.BigEndian.PutUint64(byteArray, uint64(number))
 
@@ -49,8 +39,7 @@ func byteArrayToUint64(byteArray []byte) uint64 {
 
 // uint64ToBase64 converts a int64 to a base64 encoded string
 func uint64ToBase64(id int64) string {
-	v := int64ToByteArray(id)
-	fmt.Println(v)
+	v := uint64ToByteArray(id)
 	s := base64.RawURLEncoding.EncodeToString(v)
 	return s
 }
@@ -64,4 +53,21 @@ func base64StringToUint64(key string) (uint64, error) {
 		return 0, err
 	}
 	return u, nil
+}
+
+func shortURLKeyToIDAndNonce(key string) (uint64, string, error) {
+	// split short url into two parts: actual id component based on row id, and nonce
+	if len(key) < 4 {
+		return 0, "", fmt.Errorf("invalid key, too short")
+	}
+
+	id := key[0 : len(key)-2]
+	nonce := key[len(key)-2:]
+
+	if dbID, err := base64StringToUint64(id); err != nil {
+		log.WithError(err).WithField("id", id).Error("error converting id")
+		return 0, "", err
+	} else {
+		return dbID, nonce, nil
+	}
 }

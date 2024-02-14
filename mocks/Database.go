@@ -3,8 +3,9 @@
 package mocks
 
 import (
-	"time"
+	sql "database/sql"
 
+	time "time"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -13,16 +14,15 @@ type Database struct {
 	mock.Mock
 }
 
+
 type User struct {
-	id       int
-	username string
-	email    string
+	id    int
+	email string
 
 	password_hash []byte
 }
 
 type URL struct {
-	id           int
 	Key          string     `json:"key" binding:"required"`
 	Target       string     `json:"target" binding:"required"`
 	Nonce        string     `json:"nonce" binding:"required"`
@@ -32,8 +32,59 @@ type URL struct {
 	AccessCount  int        `json:"access_count" binding:"required"`
 }
 
+// UserURLs are
+type UserURLs struct {
+	ShortURL     string  `json:"short_url"`
+	Target       string  `json:"target"`
+	Created      string  `json:"created"`
+	LastAccessed *string `json:"last_accessed"`
+	AccessCount  int     `json:"access_count"`
+}
+
+
+
+// DisableURL provides a mock function with given fields: userID, dbID
+func (_m *Database) DisableURL(userID int, dbID uint64) error {
+	ret := _m.Called(userID, dbID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DisableURL")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(int, uint64) error); ok {
+		r0 = rf(userID, dbID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+
+
+// GetConnection provides a mock function with given fields:
+func (_m *Database) GetConnection() *sql.DB {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetConnection")
+	}
+
+	var r0 *sql.DB
+	if rf, ok := ret.Get(0).(func() *sql.DB); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*sql.DB)
+		}
+	}
+
+	return r0
+}
+
 // GetURL provides a mock function with given fields: id
-func (_m *Database) GetURL(id uint64) (string, error) {
+func (_m *Database) GetURL(id uint64) (string, string, error) {
 	ret := _m.Called(id)
 
 	if len(ret) == 0 {
@@ -41,8 +92,9 @@ func (_m *Database) GetURL(id uint64) (string, error) {
 	}
 
 	var r0 string
-	var r1 error
-	if rf, ok := ret.Get(0).(func(uint64) (string, error)); ok {
+	var r1 string
+	var r2 error
+	if rf, ok := ret.Get(0).(func(uint64) (string, string, error)); ok {
 		return rf(id)
 	}
 	if rf, ok := ret.Get(0).(func(uint64) string); ok {
@@ -51,33 +103,39 @@ func (_m *Database) GetURL(id uint64) (string, error) {
 		r0 = ret.Get(0).(string)
 	}
 
-	if rf, ok := ret.Get(1).(func(uint64) error); ok {
+	if rf, ok := ret.Get(1).(func(uint64) string); ok {
 		r1 = rf(id)
 	} else {
-		r1 = ret.Error(1)
+		r1 = ret.Get(1).(string)
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(uint64) error); ok {
+		r2 = rf(id)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // GetURLs provides a mock function with given fields: userID
-func (_m *Database) GetURLs(userID int) ([]URL, error) {
+func (_m *Database) GetURLs(userID int) ([]UserURLs, error) {
 	ret := _m.Called(userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetURLs")
 	}
 
-	var r0 []URL
+	var r0 []UserURLs
 	var r1 error
-	if rf, ok := ret.Get(0).(func(int) ([]URL, error)); ok {
+	if rf, ok := ret.Get(0).(func(int) ([]UserURLs, error)); ok {
 		return rf(userID)
 	}
-	if rf, ok := ret.Get(0).(func(int) []URL); ok {
+	if rf, ok := ret.Get(0).(func(int) []UserURLs); ok {
 		r0 = rf(userID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]URL)
+			r0 = ret.Get(0).([]UserURLs)
 		}
 	}
 
@@ -90,9 +148,9 @@ func (_m *Database) GetURLs(userID int) ([]URL, error) {
 	return r0, r1
 }
 
-// GetUser provides a mock function with given fields: username
-func (_m *Database) GetUser(username string) (*User, error) {
-	ret := _m.Called(username)
+// GetUser provides a mock function with given fields: email
+func (_m *Database) GetUser(email string) (*User, error) {
+	ret := _m.Called(email)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetUser")
@@ -101,10 +159,10 @@ func (_m *Database) GetUser(username string) (*User, error) {
 	var r0 *User
 	var r1 error
 	if rf, ok := ret.Get(0).(func(string) (*User, error)); ok {
-		return rf(username)
+		return rf(email)
 	}
 	if rf, ok := ret.Get(0).(func(string) *User); ok {
-		r0 = rf(username)
+		r0 = rf(email)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*User)
@@ -112,7 +170,7 @@ func (_m *Database) GetUser(username string) (*User, error) {
 	}
 
 	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(username)
+		r1 = rf(email)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -173,17 +231,17 @@ func (_m *Database) Ping() error {
 	return r0
 }
 
-// SignupUser provides a mock function with given fields: username, password, email
-func (_m *Database) SignupUser(username string, password string, email string) error {
-	ret := _m.Called(username, password, email)
+// SignupUser provides a mock function with given fields: email, password
+func (_m *Database) SignupUser(email string, password string) error {
+	ret := _m.Called(email, password)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SignupUser")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, string, string) error); ok {
-		r0 = rf(username, password, email)
+	if rf, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = rf(email, password)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -191,9 +249,27 @@ func (_m *Database) SignupUser(username string, password string, email string) e
 	return r0
 }
 
-// ValidateUser provides a mock function with given fields: username
-func (_m *Database) ValidateUser(username string) error {
-	ret := _m.Called(username)
+// UpdateAccessAndLastAccessed provides a mock function with given fields: id
+func (_m *Database) UpdateAccessAndLastAccessed(id uint64) error {
+	ret := _m.Called(id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateAccessAndLastAccessed")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(uint64) error); ok {
+		r0 = rf(id)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ValidateUser provides a mock function with given fields: email
+func (_m *Database) ValidateUser(email string) error {
+	ret := _m.Called(email)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateUser")
@@ -201,7 +277,7 @@ func (_m *Database) ValidateUser(username string) error {
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(string) error); ok {
-		r0 = rf(username)
+		r0 = rf(email)
 	} else {
 		r0 = ret.Error(0)
 	}
