@@ -80,6 +80,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	defer cache.Close()
+
 	log.SetFormatter(&log.TextFormatter{
 		TimestampFormat: "2006-01-02 15:04:05",
 	})

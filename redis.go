@@ -23,6 +23,8 @@ type Cache interface {
 	DeleteURL(key string) error
 
 	Ping() error
+
+	Close() error
 }
 
 func NewCache() (Cache, error) {
@@ -36,6 +38,10 @@ func NewCache() (Cache, error) {
 		return nil, err
 	}
 	return &Redis{redis: client}, nil
+}
+
+func (r *Redis) Close() error {
+	return r.redis.Close()
 }
 
 func (r *Redis) InsertURL(key, url string) (string, error) {
