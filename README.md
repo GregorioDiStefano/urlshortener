@@ -34,6 +34,7 @@ Start backend (NOTE: you need `docker` and `docker-compose` installed):
 #### Left to do (just to name a few):
 
 * TODOs
+* Better logging / log statements / error messages
 * Improve unit tests
 * Add instrumentation / observability (prometheus?)
 * Migration support
