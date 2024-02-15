@@ -2,11 +2,11 @@
 
 ### A basic URL shorter backend service
 
-Start backend (NOTE: you need docker and docker-compose installed):
+Start backend (NOTE: you need `docker` and `docker-compose` installed):
 
 `./start-backend.sh`
 
-Usage:
+#### Usage:
 
 `curl -v -X POST http://localhost:8888/auth/register -H "Content-Type: application/json" -d '{"email": "user@example.com", "password": "your_password"}'`
 
@@ -18,7 +18,7 @@ Usage:
 
 `curl -v -X DELETE http://localhost:8888/api/v1/shorten/YOUR_SHORT_URL_KEY -H "Authorization: Bearer <TOKEN>"`
 
-Design considerations:
+#### Design considerations:
 
 * Written in Go
 * Heavily unit/integration tested with 72% coverage (used interfaces to allow mocking, but relied on using a test db instead since it add more value)
@@ -31,7 +31,7 @@ Design considerations:
 * Passwords like "mysecretpassword" / "hunter2" are not intended to be serious passwords.
 * OpenAPI spec provided.
 
-Left to do (just to name a few):
+#### Left to do (just to name a few):
 
 * TODOs
 * Improve unit tests
@@ -39,4 +39,5 @@ Left to do (just to name a few):
 * Migration support
 * Admin endpoint to administrator users
 * Setup k8s config
+* Get rid of utils.go
 * etc etc etc
