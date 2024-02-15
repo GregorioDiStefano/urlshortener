@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -17,18 +18,18 @@ type jwtAuthMiddleware struct {
 	secret []byte
 }
 
-func (middleware jwtAuthMiddleware) GenerateUserToken(userid int) (string, error) {
-	type MyCustomClaims struct {
-		UserID int `json:"user_id"`
+func (middleware jwtAuthMiddleware) GenerateUserToken(userid uint64) (string, error) {
+	type LoginClaims struct {
+		UserID uint64 `json:"user_id"`
 		jwt.RegisteredClaims
 	}
 
 	// Create claims with multiple fields populated
-	claims := MyCustomClaims{
+	claims := LoginClaims{
 		userid,
 		jwt.RegisteredClaims{
 			// A usual scenario is to set the expiration time relative to the current time
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(3 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			Subject:   "user-token",
 			Issuer:    issuer,
@@ -62,26 +63,26 @@ func (middleware jwtAuthMiddleware) JWTMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		actualToken := strings.TrimPrefix(authHeader, "Bearer ")
-		actualToken = strings.TrimSpace(actualToken)
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		token = strings.TrimSpace(token)
 
-		if actualToken == "" {
+		if token == "" {
 			c.JSON(401, gin.H{"error": "token is required"})
 			c.Abort()
 			return
 		}
 
-		if t, err := middleware.ValidateToken(actualToken); err != nil {
+		if t, err := middleware.ValidateToken(token); err != nil {
 			c.JSON(401, gin.H{"error": "invalid token"})
 			c.Abort()
 			return
 		} else if t.Valid {
-			var user_id int
+			var userID uint64
 
 			// Safe type assertion for username
 			if claims, ok := t.Claims.(jwt.MapClaims); ok {
 				if userIDClaim, ok := claims["user_id"].(float64); ok {
-					user_id = int(userIDClaim)
+					userID = uint64(userIDClaim)
 				} else {
 					c.JSON(401, gin.H{"error": "invalid token"})
 					c.Abort()
@@ -93,8 +94,9 @@ func (middleware jwtAuthMiddleware) JWTMiddleware() gin.HandlerFunc {
 				return
 			}
 
-			if user_id != 0 {
-				c.Set("user_id", user_id)
+			if userID != 0 {
+				fmt.Println("setting user_id: ", userID)
+				c.Set("user_id", userID)
 				c.Next()
 			} else {
 				c.JSON(401, gin.H{"error": "invalid token"})

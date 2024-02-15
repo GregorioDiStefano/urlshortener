@@ -35,7 +35,7 @@ func NewTestApp() *App {
 		log.Fatal(err)
 	}
 
-	cache, err := NewCache()
+	cache, err := NewCache("localhost")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,6 +49,7 @@ func NewTestApp() *App {
 	}
 }
 
+// crateUserAndGetToken creates a user and returns the token, used for testing
 func createUserAndGetToken(app *App) string {
 	w := httptest.NewRecorder()
 

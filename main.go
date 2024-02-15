@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -9,7 +8,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TODO : actual validation is missing in json
 type App struct {
 	db              Database
 	cache           Cache
@@ -17,33 +15,9 @@ type App struct {
 }
 
 type TokenValidator interface {
-	GenerateUserToken(userid int) (string, error)
+	GenerateUserToken(userid uint64) (string, error)
 	ValidateToken(token string) (*jwt.Token, error)
 	JWTMiddleware() gin.HandlerFunc
-}
-
-func (app *App) ping(c *gin.Context) {
-	errCache := make(chan error)
-	errDB := make(chan error)
-
-	go func() {
-		errCache <- app.cache.Ping()
-		errDB <- app.db.Ping()
-	}()
-
-	errCacheResp := <-errCache
-	errDBResp := <-errDB
-
-	if errCacheResp == nil && errDBResp == nil {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "pong",
-		})
-		return
-	} else {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "error",
-		})
-	}
 }
 
 func getRequiredEnvVar(key string) string {
@@ -58,6 +32,15 @@ func getRequiredEnvVar(key string) string {
 func main() {
 	// Very primative way to handle config, but time constraints..
 	// I would usually use https://github.com/spf13/viper for this
+
+	exitCode := 0
+
+	// cleanup and exit; required to ensure that the defer statements are executed
+	defer func() {
+		os.Exit(exitCode)
+	}()
+
+	// db env variables
 	dbConfig := &dbConfig{}
 	dbConfig.host = getRequiredEnvVar("DB_HOST")
 	dbConfig.port = getRequiredEnvVar("DB_PORT")
@@ -65,19 +48,27 @@ func main() {
 	dbConfig.password = getRequiredEnvVar("DB_PASSWORD")
 	dbConfig.dbname = getRequiredEnvVar("DB_NAME")
 
+	// jwt secret
 	jwtSecret := getRequiredEnvVar("JWT_SECRET")
+
+	// cache secret
+	redisHost := getRequiredEnvVar("REDIS_HOST")
 
 	db, err := NewDB(dbConfig)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Warn(err)
+		exitCode = 1
+		return
 	}
 
 	defer db.Close()
-	cache, err := NewCache()
+	cache, err := NewCache(redisHost)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Warn(err)
+		exitCode = 1
+		return
 	}
 
 	defer cache.Close()
@@ -93,5 +84,8 @@ func main() {
 	app := &App{db, cache, tokenChecker}
 	engine := setupRouter(app)
 
-	engine.Run(":8888")
+	if err := engine.Run(":8888"); err != nil {
+		log.Warn("Server failed to start: ", err)
+		exitCode = 1
+	}
 }

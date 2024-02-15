@@ -18,10 +18,10 @@ type Database interface {
 	GetUser(email string) (*User, error)
 	SignupUser(email, password string) error
 
-	InsertURL(userID int, url string) (int64, string, error)
+	InsertURL(userID uint64, url string) (uint64, string, error)
 	GetURL(id uint64) (string, string, error)
-	GetURLs(userID int) ([]UserURLs, error)
-	DisableURL(userID int, dbID uint64) error
+	GetURLs(userID uint64) ([]UserURLs, error)
+	DisableURL(userID uint64, dbID uint64) error
 	UpdateAccessAndLastAccessed(id uint64) error
 
 	ValidateUser(email string) error
@@ -32,10 +32,10 @@ type Database interface {
 }
 
 type User struct {
-	id    int
+	id    uint64
 	email string
 
-	password_hash []byte
+	passwordHash []byte
 }
 
 type URL struct {
@@ -77,8 +77,8 @@ func NewDB(config *dbConfig) (Database, error) {
 		return nil, err
 	}
 
-	// create tables if they don't exist, i would keep this here in a real world scenario, but
-	// for the sake of the exercise, i'll leave it here
+	// create tables if they don't exist, I wouldn't put this here in a real world scenario, but
+	// for the sake of the exercise, i'll leave it here.
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
 		id SERIAL PRIMARY KEY,
 		email VARCHAR(255) NOT NULL UNIQUE,
@@ -91,9 +91,9 @@ func NewDB(config *dbConfig) (Database, error) {
 		id SERIAL PRIMARY KEY,
 		target VARCHAR(255) NOT NULL,
 		nonce VARCHAR(2) NOT NULL,
-		created DATE NOT NULL,
+		created TIMESTAMP NOT NULL,
 		user_id INT,
-		last_accessed DATE,
+		last_accessed TIMESTAMP,
 		access_count INT,
 		disabled BOOLEAN DEFAULT FALSE,
 		FOREIGN KEY (user_id) REFERENCES users(id)
@@ -119,12 +119,15 @@ func NewDB(config *dbConfig) (Database, error) {
 	return &DB{db}, nil
 }
 
-func (d *DB) GetURLs(userID int) ([]UserURLs, error) {
+func (d *DB) Close() error {
+	return d.db.Close()
+}
+
+func (d *DB) GetURLs(userID uint64) ([]UserURLs, error) {
 	var urls []UserURLs
 	rows, err := d.db.Query(
 		"SELECT id, nonce, target, created, last_accessed, access_count FROM short_urls WHERE user_id = $1 AND disabled = false", userID)
 
-	fmt.Println(rows, err)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +137,7 @@ func (d *DB) GetURLs(userID int) ([]UserURLs, error) {
 	for rows.Next() {
 		var url UserURLs
 
-		var id int64
+		var id uint64
 		var nonce string
 
 		err := rows.Scan(&id, &nonce, &url.Target, &url.Created, &url.LastAccessed, &url.AccessCount)
@@ -143,7 +146,7 @@ func (d *DB) GetURLs(userID int) ([]UserURLs, error) {
 		}
 
 		// construct the short url
-		url.ShortURL = fmt.Sprintf("%s%s", uint64ToBase64(int64(id)), nonce)
+		url.ShortURL = fmt.Sprintf("%s%s", uint64ToBase64(id), nonce)
 		urls = append(urls, url)
 	}
 
@@ -155,7 +158,7 @@ func (d *DB) GetUser(email string) (*User, error) {
 	var user User
 
 	err := d.db.QueryRow("SELECT id, password_hash, email FROM users WHERE email = $1", email).Scan(
-		&user.id, &user.password_hash, &user.email)
+		&user.id, &user.passwordHash, &user.email)
 
 	if err != nil {
 		return nil, err
@@ -196,16 +199,17 @@ func (d *DB) SignupUser(email, password string) error {
 		return err
 	} else if err != nil {
 		return fmt.Errorf("error checking email existence: %w", err)
-	} else {
-		return fmt.Errorf("email already exists")
 	}
+
+	// looks like we found a matching email
+	return fmt.Errorf("email already exists")
 }
 
-func (d *DB) InsertURL(userID int, url string) (int64, string, error) {
+func (d *DB) InsertURL(userID uint64, url string) (uint64, string, error) {
 	nonce := randomString(2)
 
-	now := time.Now().Format("2006-01-02")
-	var id int64
+	now := time.Now().Format("2006-01-02 15:04:05-07:00")
+	var id uint64
 
 	err := d.db.QueryRow("INSERT INTO short_urls (target, created, user_id, last_accessed, access_count, nonce) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
 		url, now, userID, nil, 0, nonce).Scan(&id)
@@ -218,6 +222,7 @@ func (d *DB) UpdateAccessAndLastAccessed(id uint64) error {
 	return err
 }
 
+// GetURL returns the target and nonce for a given id
 func (d *DB) GetURL(id uint64) (string, string, error) {
 	// increment value and return value from column
 	var target string
@@ -228,7 +233,8 @@ func (d *DB) GetURL(id uint64) (string, string, error) {
 	return target, nonce, err
 }
 
-func (d *DB) DisableURL(userID int, dbID uint64) error {
+// DisableURL sets the disabled column to true
+func (d *DB) DisableURL(userID uint64, dbID uint64) error {
 	// update user to be validated
 	result, err := d.db.Exec("UPDATE short_urls SET disabled = true WHERE user_id = $1 AND id = $2", userID, dbID)
 
@@ -236,13 +242,15 @@ func (d *DB) DisableURL(userID int, dbID uint64) error {
 		return fmt.Errorf("error disabling url: %w", err)
 	}
 
-	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+	var changed int64
+	if changed, err = result.RowsAffected(); err != nil || changed != 1 {
 		return fmt.Errorf("error disabling url: %w", err)
-	} else {
-		return err
 	}
+
+	return err
 }
 
+// ValidateUser sets the validate column to true, currently not used, but would be useful for email validation
 func (d *DB) ValidateUser(email string) error {
 	// update user to be validated
 	result, err := d.db.Exec("UPDATE users SET validate = true WHERE email = $1", email)
@@ -251,11 +259,12 @@ func (d *DB) ValidateUser(email string) error {
 		return fmt.Errorf("error validating user: %w", err)
 	}
 
-	if changed, err := result.RowsAffected(); err != nil || changed != 1 {
+	var changed int64
+	if changed, err = result.RowsAffected(); err != nil || changed != 1 {
 		return fmt.Errorf("error validating user: %w", err)
-	} else {
-		return err
 	}
+
+	return err
 }
 
 func (d *DB) Ping() error {
@@ -268,6 +277,11 @@ func (d *DB) GetConnection() *sql.DB {
 
 func randomString(size int) string {
 	b := make([]byte, size+2)
-	rand.Read(b)
+
+	// unlikle to fail, but blow up if it does
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+
 	return fmt.Sprintf("%x", b)[2 : size+2]
 }

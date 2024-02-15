@@ -27,9 +27,9 @@ type Cache interface {
 	Close() error
 }
 
-func NewCache() (Cache, error) {
+func NewCache(redisHost string) (Cache, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: fmt.Sprintf("%s:6379", redisHost),
 	})
 
 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Second)

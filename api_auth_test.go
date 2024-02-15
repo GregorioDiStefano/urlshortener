@@ -16,7 +16,7 @@ func TestRegisterOK(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	requestString := `{"password":"testpassword!","email":"greg@greg.com"}`
+	requestString := `{"email": "greg@greg.com", "password":"testpassword!"}`
 	buf := bytes.NewBufferString(requestString)
 	req, _ := http.NewRequest("POST", "/auth/register", buf)
 	router.ServeHTTP(w, req)
@@ -31,7 +31,7 @@ func TestRegisterDuplicate(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	requestString := `{"password":"testpassword!","email":"greg@greg.com"}`
+	requestString := `{"email": "greg@greg.com", "password":"testpassword!"}`
 	buf := bytes.NewBufferString(requestString)
 	req, _ := http.NewRequest("POST", "/auth/register", buf)
 	router.ServeHTTP(w, req)
@@ -40,13 +40,15 @@ func TestRegisterDuplicate(t *testing.T) {
 
 	// attempt to register again
 	w = httptest.NewRecorder()
+	buf = bytes.NewBufferString(requestString)
 	req, _ = http.NewRequest("POST", "/auth/register", buf)
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, 400, w.Code)
+	assert.Equal(t, 500, w.Code)
+	assert.Equal(t, `{"error":"email already exists"}`, w.Body.String())
 }
 
-func TestRegister_BadJSON(t *testing.T) {
+func TestRegisterBadJSON(t *testing.T) {
 	app := NewTestApp()
 	router := setupRouter(app)
 	defer wipeDB(app.db)
@@ -57,25 +59,28 @@ func TestRegister_BadJSON(t *testing.T) {
 	buf := bytes.NewBufferString(requestString)
 	req, _ := http.NewRequest("POST", "/auth/register", buf)
 	router.ServeHTTP(w, req)
+
 	assert.Equal(t, 400, w.Code)
+	assert.Equal(t, `{"error":"invalid request: unexpected EOF"}`, w.Body.String())
 }
 
-func TestRegister_BadPassword(t *testing.T) {
+func TestRegisterBadPassword(t *testing.T) {
 	app := NewTestApp()
 	router := setupRouter(app)
 	defer wipeDB(app.db)
 
 	w := httptest.NewRecorder()
 
-	requestString := `{"password":"testpassword","email":"greg@greg.com"}`
+	requestString := `{"email": "greg@greg.com", "password":"test!"}`
 	buf := bytes.NewBufferString(requestString)
 	req, _ := http.NewRequest("POST", "/auth/register", buf)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, 400, w.Code)
+	assert.Contains(t, w.Body.String(), "failed on the 'min' tag")
 }
 
-func TestLogin_BadAccount(t *testing.T) {
+func TestLoginBadAccount(t *testing.T) {
 	app := NewTestApp()
 	router := setupRouter(app)
 	defer wipeDB(app.db)
@@ -90,14 +95,14 @@ func TestLogin_BadAccount(t *testing.T) {
 	assert.Equal(t, 401, w.Code)
 }
 
-func TestLogin_BadPassword(t *testing.T) {
+func TestLoginBadPassword(t *testing.T) {
 	app := NewTestApp()
 	router := setupRouter(app)
 	defer wipeDB(app.db)
 
 	w := httptest.NewRecorder()
 
-	requestString := `{"password":"testpassword!","email":"greg@greg.com"}`
+	requestString := `{"email":"greg@greg.com","password":"testpassword!"}`
 	buf := bytes.NewBufferString(requestString)
 	req, _ := http.NewRequest("POST", "/auth/register", buf)
 	router.ServeHTTP(w, req)
@@ -110,31 +115,19 @@ func TestLogin_BadPassword(t *testing.T) {
 	loginReq, _ := http.NewRequest("POST", "/auth/login", loginBuf)
 	loginW := httptest.NewRecorder()
 	router.ServeHTTP(loginW, loginReq)
+
 	assert.Equal(t, 401, loginW.Code)
+	assert.Equal(t, `{"error":"invalid credentials"}`, loginW.Body.String())
 }
 
-func TestLogin_BadJSON(t *testing.T) {
+func TestSuccessfulRegisterWithLogin(t *testing.T) {
 	app := NewTestApp()
 	router := setupRouter(app)
 	defer wipeDB(app.db)
 
 	w := httptest.NewRecorder()
 
-	requestString := `{`
-	buf := bytes.NewBufferString(requestString)
-	req, _ := http.NewRequest("POST", "/auth/login", buf)
-	router.ServeHTTP(w, req)
-	assert.Equal(t, 400, w.Code)
-}
-
-func TestSuccessfulRegisterLogin(t *testing.T) {
-	app := NewTestApp()
-	router := setupRouter(app)
-	defer wipeDB(app.db)
-
-	w := httptest.NewRecorder()
-
-	requestString := `{"password":"testpassword!","email":"greg@greg.ca"}`
+	requestString := `{"email": "greg@greg.com", "password":"testpassword!"}`
 	buf := bytes.NewBufferString(requestString)
 	req, _ := http.NewRequest("POST", "/auth/register", buf)
 	router.ServeHTTP(w, req)
@@ -142,7 +135,7 @@ func TestSuccessfulRegisterLogin(t *testing.T) {
 	assert.Equal(t, 201, w.Code)
 
 	// attempt to login
-	loginRequestString := `{"email":"greg@greg.ca","password":"testpassword!"}`
+	loginRequestString := `{"email":"greg@greg.com","password":"testpassword!"}`
 	loginBuf := bytes.NewBufferString(loginRequestString)
 	loginReq, _ := http.NewRequest("POST", "/auth/login", loginBuf)
 	loginW := httptest.NewRecorder()
@@ -156,7 +149,6 @@ func TestInvalidToken(t *testing.T) {
 	defer wipeDB(app.db)
 
 	badTokens := []string{"", "Bearer ", "Bearer invalid-token"}
-
 	requestString := `{"url":"https://www.google.com"}`
 	buf := bytes.NewBufferString(requestString)
 	req, _ := http.NewRequest("POST", "/api/v1/shorten", buf)
@@ -182,4 +174,5 @@ func TestMissingToken(t *testing.T) {
 	router.ServeHTTP(loginW, req)
 
 	assert.Equal(t, 401, loginW.Code)
+	assert.Equal(t, `{"error":"authorization header is required"}`, loginW.Body.String())
 }

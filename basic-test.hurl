@@ -1,3 +1,6 @@
+# Basic e2e test, you need to have the server running and hurl installed for this to work
+# See run-basic.test.sh
+
 POST http://localhost:8888/auth/register
 {
     "email": "greg.distefano@gmail.com",

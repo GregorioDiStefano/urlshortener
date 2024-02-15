@@ -12,7 +12,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestCreateShortlink_OK(t *testing.T) {
+func TestCreateShortlinkOK(t *testing.T) {
 	app := NewTestApp()
 	router := setupRouter(app)
 	defer wipeDB(app.db)

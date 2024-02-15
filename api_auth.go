@@ -31,7 +31,7 @@ func (app *App) login(c *gin.Context) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword(user.password_hash, []byte(json.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword(user.passwordHash, []byte(json.Password)); err != nil {
 		log.WithError(err).Error("error comparing password")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
@@ -53,7 +53,7 @@ func (app *App) register(c *gin.Context) {
 		Email    string `json:"email" binding:"required,email"`
 	}
 
-	validate := func(login *RegisterRequest) error {
+	validatePassword := func(login *RegisterRequest) error {
 		const specialChars = "!@#$%^&*()_+"
 		if !strings.ContainsAny(login.Password, specialChars) {
 			return fmt.Errorf("password must contain at least one special character")
@@ -65,13 +65,12 @@ func (app *App) register(c *gin.Context) {
 	var json RegisterRequest
 	if err := c.ShouldBindJSON(&json); err != nil {
 		log.WithError(err).Error("error binding json")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("invalid request: %w", err).Error()})
 		return
 	}
 
-	if err := validate(&json); err != nil {
-		// TODO: use a better error message
-		log.WithError(err).Error("error validating json")
+	if err := validatePassword(&json); err != nil {
+		log.WithError(err).Error("error validating")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "validation failed: " + err.Error()})
 		return
 	}

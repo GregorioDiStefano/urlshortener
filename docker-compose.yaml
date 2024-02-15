@@ -18,4 +18,13 @@ services:
       POSTGRES_DB: testdb
     ports:
      - "9999:5432"
-  
+  app:
+    build: .
+    command: bash -c "source /app/docker-env-set.sh && /urlshort"
+    restart: always
+    ports:
+     - "8888:8888"
+    depends_on:
+     - db
+     - testdb
+     - redis

@@ -2,27 +2,12 @@ package main
 
 import (
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 
 	log "github.com/sirupsen/logrus"
 )
 
-func TestPingRoute(t *testing.T) {
-	app := NewTestApp()
-	router := setupRouter(app)
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/ping", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, 200, w.Code)
-	assert.Equal(t, `{"message":"pong"}`, w.Body.String())
-}
-
+// Drop tables before tests and create new connection
 func TestMain(m *testing.M) {
 	log.SetLevel(log.DebugLevel)
 	db, err := newDBConnection()
@@ -31,7 +16,7 @@ func TestMain(m *testing.M) {
 		log.Fatal(err)
 	}
 
-	_, err = db.GetConnection().Exec("DROP TABLE IF EXISTS short_urls; DROP TABLE IF EXISTS users;")
+	_, err = db.GetConnection().Exec("DROP TABLE IF EXISTS short_urls; DROP TABLE IF EXISTS users; DROP TABLE IF EXISTS schema_migrations")
 	fmt.Println("Dropped tables")
 	if err != nil {
 		log.Fatal(err)

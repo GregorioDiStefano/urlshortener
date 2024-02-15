@@ -6,6 +6,7 @@ import (
 	sql "database/sql"
 
 	time "time"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -13,7 +14,6 @@ import (
 type Database struct {
 	mock.Mock
 }
-
 
 type User struct {
 	id    int
@@ -41,7 +41,23 @@ type UserURLs struct {
 	AccessCount  int     `json:"access_count"`
 }
 
+// Close provides a mock function with given fields:
+func (_m *Database) Close() error {
+	ret := _m.Called()
 
+	if len(ret) == 0 {
+		panic("no return value specified for Close")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
 
 // DisableURL provides a mock function with given fields: userID, dbID
 func (_m *Database) DisableURL(userID int, dbID uint64) error {
@@ -60,8 +76,6 @@ func (_m *Database) DisableURL(userID int, dbID uint64) error {
 
 	return r0
 }
-
-
 
 // GetConnection provides a mock function with given fields:
 func (_m *Database) GetConnection() *sql.DB {

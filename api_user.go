@@ -8,9 +8,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// disableURL is a handler function that takes a short URL and disables it.
+// NOTE: we purposely don't delete the URL from the database, as we want to keep a record of it
 func (app *App) disableURL(c *gin.Context) {
 	key := c.Param("id")
-	userId := c.GetInt("user_id")
+	userID := c.GetUint64("user_id")
 
 	var dbID uint64
 	var err error
@@ -21,8 +23,8 @@ func (app *App) disableURL(c *gin.Context) {
 		return
 	}
 
-	if err := app.db.DisableURL(userId, dbID); err != nil {
-		log.WithField("user_id", userId).WithField("key", key).WithError(err).Error("error disabling url")
+	if err := app.db.DisableURL(userID, dbID); err != nil {
+		log.WithField("user_id", userID).WithField("key", key).WithError(err).Error("error disabling url")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -35,11 +37,11 @@ func (app *App) disableURL(c *gin.Context) {
 }
 
 func (app *App) urls(c *gin.Context) {
-	userId := c.GetInt("user_id")
-	urls, err := app.db.GetURLs(userId)
+	userID := c.GetUint64("user_id")
+	urls, err := app.db.GetURLs(userID)
 
 	if err != nil {
-		log.WithField("user_id", userId).WithError(err).Error("error getting urls")
+		log.WithField("user_id", userID).WithError(err).Error("error getting urls")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -49,11 +51,14 @@ func (app *App) urls(c *gin.Context) {
 
 // shortenURL is a handler function that takes a URL, shortens it, and returns the shortened URL.
 
+// NOTE: the shorten URL key is essentially the base64 encoding of the row id in the database, and the nonce
+// this is done to make enumeration of short urls more difficult
 func (app *App) shortenURL(c *gin.Context) {
 	type ShortenRequest struct {
 		URL string `json:"url" binding:"required,http_url"`
 	}
 
+	userId := c.GetUint64("user_id")
 	var json ShortenRequest
 	if err := c.ShouldBindJSON(&json); err != nil {
 		log.WithError(err).Error("error binding json")
@@ -61,9 +66,7 @@ func (app *App) shortenURL(c *gin.Context) {
 		return
 	}
 
-	userId := c.GetInt("user_id")
 	userID, nonce, err := app.db.InsertURL(userId, json.URL)
-
 	if err != nil {
 		log.WithField("user_id", userId).WithError(err).Error("error inserting url")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

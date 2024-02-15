@@ -10,7 +10,7 @@ import (
 
 // int64ToByteArray converts an int64 to a byte array and removed leading 0x00s
 // For example, a number such as 1020, when converted to a byte array, will be [3 252] instead of [0 0 0 0 0 0 3 252]
-func uint64ToByteArray(number int64) []byte {
+func uint64ToByteArray(number uint64) []byte {
 	byteArray := make([]byte, 8)
 	binary.BigEndian.PutUint64(byteArray, uint64(number))
 
@@ -26,6 +26,7 @@ func uint64ToByteArray(number int64) []byte {
 }
 
 // byteArrayToUint64 converts a byte array to a uint64 and add restores leading 0x00s
+// For example, a byte array such as [3 252] will be converted to 1020 instead of [0 0 0 0 0 0 3 252]
 func byteArrayToUint64(byteArray []byte) uint64 {
 	// Ensure this byte array was produced in a way that matches how you interpret it (big endian or little endian)
 	missingBytes := 8 - len(byteArray)
@@ -38,7 +39,7 @@ func byteArrayToUint64(byteArray []byte) uint64 {
 }
 
 // uint64ToBase64 converts a int64 to a base64 encoded string
-func uint64ToBase64(id int64) string {
+func uint64ToBase64(id uint64) string {
 	v := uint64ToByteArray(id)
 	s := base64.RawURLEncoding.EncodeToString(v)
 	return s
@@ -64,10 +65,12 @@ func shortURLKeyToIDAndNonce(key string) (uint64, string, error) {
 	id := key[0 : len(key)-2]
 	nonce := key[len(key)-2:]
 
-	if dbID, err := base64StringToUint64(id); err != nil {
+	var dbID uint64
+	var err error
+	if dbID, err = base64StringToUint64(id); err != nil {
 		log.WithError(err).WithField("id", id).Error("error converting id")
 		return 0, "", err
-	} else {
-		return dbID, nonce, nil
 	}
+
+	return dbID, nonce, nil
 }
