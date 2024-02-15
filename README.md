@@ -8,15 +8,23 @@ Start backend (NOTE: you need `docker` and `docker-compose` installed):
 
 #### Usage:
 
+Register: 
 `curl -v -X POST http://localhost:8888/auth/register -H "Content-Type: application/json" -d '{"email": "user@example.com", "password": "your_password"}'`
 
+Login: 
 `curl -v -X POST http://localhost:8888/auth/login -H "Content-Type: application/json" -d '{"email": "user@example.com", "password": "your_password"}'`
 
+Shorten: 
 `curl -v -X POST http://localhost:8888/api/v1/shorten -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" -d '{"url": "https://example.com"}'`
 
+List (as auth. useer): 
 `curl -v -X GET http://localhost:8888/api/v1/urls/ -H "Authorization: Bearer <TOKEN>"`
 
+Disable/delete (as auth. user): 
 `curl -v -X DELETE http://localhost:8888/api/v1/shorten/YOUR_SHORT_URL_KEY -H "Authorization: Bearer <TOKEN>"`
+
+Redirect: 
+`curl -v http://localhost:8888/<short-id>`
 
 #### Design considerations:
 
